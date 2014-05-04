@@ -1,11 +1,16 @@
-/*******************************************************************************
-*           1602 test
-*  1.实现DB1直接控制Lcd1602,显示，时间，自定义图像，V1.0. 2014/04/22 01:58:00 
-	TIME: 2014.04.21
-*  2.增加红外效果.P3.2 定义LCM2402的RS控制线,改为1.3，P3.2定义为外部红外中断信号线 
-*     2014.05.04
-*  3. 添加串口通讯。（电脑和DB1,红外遥控，发串码）
-*******************************************************************************/
+
+/*********************************************************************************************
+程序名： 　　 1602 显示 测试程序
+编写人： 　　 yuwx.net　
+编写时间：　　2011年6月18日
+硬件支持：　　STC12C5A60S2 12MHz晶体（不可换其他8051单片机）
+接口说明：　　
+修改日志：　　
+      1.实现DB1直接控制Lcd1602,显示，时间，自定义图像，V1.0. 2014/04/22 01:58:00 TIME: 2014.04.21	
+      2.增加红外效果.P3.2 定义LCM2402的RS控制线,改为1.3，P3.2定义为外部红外中断信号线  TIME:2014.05.04    
+      3. 添加串口通讯。（电脑和DB1,红外遥控，发串码）
+	2014.05.05 01:42 pc->DB1 串口接收Ok
+/*********************************************************************************************/
 
 #include <DB1.h>
 //#include "lcd.h"
@@ -15,12 +20,13 @@ unsigned char talbe1[MAX_STRING_LEN]=" [www.yuwx.net] ";
 //unsigned char talbe1[MAX_STRING_LEN]="0123456789";
 unsigned char talbe2[MAX_STRING_LEN]="LCD1602 test ok!";
 
-unsigned char code CDIS1[13]={" Red Control"};
+unsigned char code CDIS1[13]={" Red Ctrl"}; //{" Red Control"};
 unsigned char code CDIS2[13]={" IR-CODE --H"};
 
 unsigned char IrValue[6] = {0};
 unsigned char Time = 0;
 unsigned int nPushCounts = 0;//按键次数计数
+unsigned char uType = 0;//0:显示红外 1:显示串口
 
 //void DELAY_MS (unsigned int a);
 
@@ -67,9 +73,25 @@ void DelayMs(unsigned int x);   //0.14ms误差 0us
 void IrInit();//初始化红外
 
 //显示十进制计数
-void DisplayTenCode();
+void DisplayTenCode(int nNumber);
 //显示16进制计数
-void DisplayHexCode();
+void DisplayHexCode(int nNumber);
+//设置串口
+void UsartConfiguration();
+
+//读串口数据
+unsigned char ReadSerial();
+//显示串口数据
+void DisplaySerialCode(unsigned char uCode);
+
+//向串口发送一个字符 
+void send_char_com(unsigned char ch);
+//向串口发送一个字符串,长度不限。//应用：send_string_com("d9887321$"); 
+void send_string_com(unsigned char *str);
+
+void TestSerial();
+//测试红外按键发串码
+void IrKeyTest();
 
 /********************************************************************************************
 // 读LCM忙程序 [底层协议] // （所有底层协议都无需关注）
@@ -365,6 +387,9 @@ void DisplayLove();
 void main()
 {	
 	uint8 i = 0;
+	unsigned char uCodeSerial = 0;
+	unsigned int nPushCountsPre = 0;//记录之前的计数，用于不更新时不操作
+	
 	init();//初始化                           
 	LCM2402_Init();//LCM2402初始化	
 	IrInit();//初始化红外
@@ -386,10 +411,13 @@ void main()
 	print(0x80, CDIS1);
 	print(0x40, CDIS2);	
 	Delay1ms(1000);		
-	LCM2402_WriteCMD(CMD_clear);//清屏
+	//LCM2402_WriteCMD(CMD_clear);//清屏
 	
 	//写入自定义图形
 	CgramWrite_byType(1);
+	
+	//串口设置
+	UsartConfiguration();
 	
 	while(1)
 	{		
@@ -398,6 +426,7 @@ void main()
 		//print2(0x4a, TIME_SS % 7);		
 
 		/*3. 显示时间Realtime */
+		/*
 		RealTime_Display();
 		
 		if(DAY_BIT == 1)
@@ -406,11 +435,46 @@ void main()
 			month_day();//计算公历日期	
 			DAY_BIT = 0;//计算完成后将日期变更标志位置0
 		}
+		*/
 		
 		/*4. 显示红外键码*/
 		DisplayIRCode();
-		DisplayHexCode();
-		DisplayTenCode();
+		
+		//读串口数据
+		uCodeSerial = ReadSerial();
+		
+		if(0 == uType)
+		{
+			DisplayHexCode((int)nPushCounts);
+			DisplayTenCode((int)nPushCounts);
+			
+			//send_string_com("温度:");	//显示汉字
+			//send_char_com(i/10+0x30);	//显示温度 十位
+			//send_char_com(i%10+0x30);	//显示温度 个位
+			//send_char_com(0x54);
+			//send_string_com("℃");	//度C
+			
+			if(nPushCountsPre != nPushCounts)
+			{
+				//测试红外按键发串码
+				IrKeyTest();
+			}			
+			
+			//Delay1ms(500);
+		}
+		else if(1 == uType)
+		{
+			/*5. 显示串口数据 */
+			DisplaySerialCode(uCodeSerial);
+			//Delay1ms(1000);
+		}
+		else{
+			//
+		}
+		
+		nPushCountsPre = nPushCounts;
+		
+		Delay1ms(10);
 	}
 }
 
@@ -477,7 +541,7 @@ void DisplayIRCode()
 }
 
 //显示十进制计数
-void DisplayTenCode()
+void DisplayTenCode(int nNumber)
 {
 	unsigned char uBai = 0x00;//百位
 	unsigned char uGe = 0x00;//个位
@@ -486,9 +550,9 @@ void DisplayTenCode()
 	unsigned char uValue = 0x00;
 	
 	//最后显示按键次数计数,十进制显示
-	uBai = nPushCounts/100;
-	uShi = (nPushCounts%100)/10;
-	uGe = nPushCounts % 10;
+	uBai = nNumber/100;
+	uShi = (nNumber%100)/10;
+	uGe = nNumber % 10;
 	
 	if(uBai > 9)
 	{
@@ -508,7 +572,7 @@ void DisplayTenCode()
 }
 
 //显示16进制计数
-void DisplayHexCode()
+void DisplayHexCode(int nNumber)
 {
 	unsigned char uHex01 = 0x00;//十六进制低位
 	unsigned char uHex02 = 0x00;//十六进制高位
@@ -517,8 +581,8 @@ void DisplayHexCode()
 	
 	//十六进制显示
 	uAdrr = 0x80 + 0x0e;//第一行第14个字符
-	uHex01 = nPushCounts % 16;
-	uHex02 = nPushCounts / 16 ;
+	uHex01 = nNumber % 16;
+	uHex02 = nNumber / 16 ;
 	if(uHex02 > 9)//先写高位
 	{
 		uValue = 0x37 + uHex02;
@@ -565,7 +629,7 @@ void DelayMs(unsigned int x)   //0.14ms误差 0us
 *******************************************************************************/
 void IrInit()
 {
-	int n = 3;
+	int n = 4;
 	
 	IT0=1;//下降沿触发
 	EX0=1;//打开中断0允许
@@ -577,9 +641,9 @@ void IrInit()
 	while(n > 0)
 	{
 		LED_IR = 1;
-		Delay1ms(500);
+		Delay1ms(300);
 		LED_IR = 0;
-		Delay1ms(500);
+		Delay1ms(300);
 		
 		--n;
 	}	
@@ -651,6 +715,7 @@ void ReadIr() interrupt 0
 			//测试红外LED更改状态
 			LED_IR = ~LED_IR;
 			nPushCounts++;
+			uType = 0;//开红外显示
 		}
 		if(IrValue[2]!=~IrValue[3])
 		{
@@ -659,4 +724,134 @@ void ReadIr() interrupt 0
 	}			
 }
 
+/*******************************************************************************
+* 函 数 名         :UsartConfiguration()
+* 函数功能		   :设置串口
+* 输    入         : 无
+* 输    出         : 无
+*******************************************************************************/
+void UsartConfiguration()
+{
+	/* //PZ init
+	SCON=0X50;			//设置为工作方式1
+	TMOD=0X20;			//设置计数器工作方式2
+	PCON=0X80;			//波特率加倍
+	TH1=0XF3;		    //计数器初始值设置，注意波特率是4800的
+	TL1=0XF3;
+	TR1=1;			  //打开计数器
+*/
+	//Delay1ms(200); //
+	//P1M0 = 0x01;//强推?
+	
+	TMOD = 0x20;	//定时器T/C1工作方式2
+	SCON = 0x50;	//串口工作方式1，允许串口接收（SCON = 0x40 时禁止串口接收）
+	TH1 = 0xF3;	//定时器初值高8位设置
+	TL1 = 0xF3;	//定时器初值低8位设置
+	PCON = 0x80;	//波特率倍频（屏蔽本句波特率为2400）
+	TR1 = 1;	//定时器启动
+}
 
+//读串口数据
+unsigned char ReadSerial()
+{
+	unsigned char receiveData = 0x00;
+	if(RI == 1)				//查看是否接收到数据
+	{
+		receiveData = SBUF;	//读取数据
+		RI = 0;				//清除标志位
+		
+		uType = 1;//开串口显示		
+		//接收到串口数据指示灯
+		LED_IR = ~LED_IR;
+		
+		Delay1ms(20);
+	}
+	
+	return receiveData;
+}
+
+//显示串口数据
+void DisplaySerialCode(unsigned char uCode)
+{
+	if(uCode != 0)
+	{
+		//LcdWriteCom(0xC0);
+		//--因为一次接受只能接收到8位数据，最大为255，所以只用显示百位之后--//
+		//LcdWriteData('0' + (receiveData / 100));      // 百位
+		//LcdWriteData('0' + (receiveData % 100 / 10)); // 十位
+		//LcdWriteData('0' + (receiveData % 10));		  // 个位
+		DisplayHexCode((int)uCode);
+		DisplayTenCode((int)uCode);
+	}
+}
+
+//向串口发送一个字符 
+void send_char_com(unsigned char ch)
+{
+	SBUF=ch;
+	//while(TI == 0);
+	//TI=0;
+}
+
+//向串口发送一个字符串,长度不限。//应用：send_string_com("d9887321$"); 
+void send_string_com(unsigned char *str)
+{
+	while (*str != '\0')
+	{
+		send_char_com(*str);
+		*str++; 
+	}
+	*str = 0;
+}
+
+/* void TestSerial()
+{
+	send_char_com(0xDD);
+	send_char_com(0xDD);	
+	send_char_com(0xDD);
+	send_char_com(0xDD);	
+	
+	for(i=1; i<5; i++)
+	{
+		send_char_com(IrValue[i]);
+	}
+	
+	send_char_com(0xFF);
+	send_char_com(0xFF);
+	send_char_com(0xFF);
+	send_char_com(0xFF);
+} */
+
+//测试红外按键发串码
+void IrKeyTest()
+{
+	//unsigned char uCode = (IrValue[4] << 4) + (IrValue[5] & 0x0f);
+	/*
+	unsigned char i = 0;
+	for(i=0; i<128; i++)
+	{
+		send_char_com(i);
+	}	
+	*/
+	
+	unsigned char uCode = IrValue[2];
+	
+	switch(uCode)
+	{
+		case 0x05:
+		{
+			send_string_com("温度:");	//显示汉字
+			break;
+		}
+		default:
+		{
+			//send_char_com(uCode);
+			//send_string_com("FFFF");
+			send_char_com(uCode);
+			//send_string_com("DDDD");
+			break;
+		}			
+	}
+	
+	//Delay1ms(2000);
+}
