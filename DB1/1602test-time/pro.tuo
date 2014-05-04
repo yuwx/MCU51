@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="Windows-1252" ?>
+<TKStudioOptions Version="3.00" Author="YinHandong[Òüº®¶¬]">
+    <Projects OPTPES="96,96,2,0,">
+        <Project ProjectGUID="{4173D77A-6807-43e7-886E-4CCAB55AFD0C}" Name="pro" ACTCFG="Target 1">
+            <TARGOPT Name="Target 1" OPTDF="0">
+                <OPTFFF VAL="&lt;.\main.c&gt; {2,3,-1,-1,0,0,1448,478,172,5479}" />
+                <OPTFFF VAL="&lt;..\..\..\Keil\c51\INC\DB1.h&gt; {0,1,-1,-1,52,52,1526,533,234,466}" />
+                <OPTFFF VAL="&lt;.\lcd.c&gt; {0,1,-1,-1,78,78,1552,559,17,547}" />
+                <OPTFFF VAL="&lt;.\lcd.h&gt; {0,1,-1,-1,104,104,1578,585,0,760}" />
+            </TARGOPT>
+        </Project>
+    </Projects>
+</TKStudioOptions>
